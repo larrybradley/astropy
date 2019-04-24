@@ -24,7 +24,8 @@ import warnings
 
 from collections import defaultdict, OrderedDict
 from contextlib import suppress
-from inspect import signature
+from inspect import signature, Signature
+from inspect import Parameter as InspectParam
 from itertools import chain, islice
 
 import numpy as np
@@ -382,16 +383,26 @@ class _ModelMeta(OrderedDescriptorContainer, InheritDocstrings, abc.ABCMeta):
             # two keyword arguments.
             inputs = members['inputs']
             args = ('self',) + inputs
-            new_call = make_function_with_signature(
-                    __call__, args, [('model_set_axis', None),
-                                     ('with_bounding_box', False),
-                                     ('fill_value', np.nan),
-                                     ('equivalencies', None)])
+
+            params = []
+            for arg in args:
+                params.append(
+                    InspectParam(arg, default=InspectParam.empty,
+                                 kind=InspectParam.POSITIONAL_OR_KEYWORD))
+
+            keywords = [('model_set_axis', None),
+                        ('with_bounding_box', False),
+                        ('fill_value', np.nan),
+                        ('equivalencies', None)]
+            for (keyword, default) in keywords:
+                params.append(
+                    InspectParam(keyword, default=default,
+                                 kind=InspectParam.POSITIONAL_OR_KEYWORD))
 
             # The following makes it look like __call__ was defined in the class
-            update_wrapper(new_call, cls)
+            #update_wrapper(new_call, cls)
 
-            cls.__call__ = new_call
+            cls.__call__.__signature__ = Signature(parameters=params)
 
         if ('__init__' not in members and not inspect.isabstract(cls) and
                 cls._parameters_):
@@ -416,10 +427,20 @@ class _ModelMeta(OrderedDescriptorContainer, InheritDocstrings, abc.ABCMeta):
             def __init__(self, *params, **kwargs):
                 return super(cls, self).__init__(*params, **kwargs)
 
-            new_init = make_function_with_signature(
-                    __init__, args, kwargs, varkwargs='kwargs')
-            update_wrapper(new_init, cls)
+            params = []
+            for arg in args:
+                params.append(
+                    InspectParam(arg, default=InspectParam.empty,
+                                 kind=InspectParam.POSITIONAL_OR_KEYWORD))
+
+            params.append(
+                InspectParam('**kwargs', default=InspectParam.empty,
+                             kind=InspectParam.POSITIONAL_OR_KEYWORD))
+
+            #update_wrapper(new_init, cls)
             cls.__init__ = new_init
+
+            cls.__init__.__signature__ = Signature(parameters=params)
 
     # *** Arithmetic operators for creating compound models ***
     __add__ = _model_oper('+')
