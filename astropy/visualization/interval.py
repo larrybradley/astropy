@@ -108,13 +108,8 @@ class BaseInterval(BaseTransform):
         result : ndarray
             The transformed values.
         """
-        # Drop units if present
-        if isinstance(values, u.Quantity):
-            values = values.value
-        if isinstance(values, np.ma.MaskedArray) and isinstance(
-            values.data, u.Quantity
-        ):
-            values = np.ma.MaskedArray(values.data.value, values.mask)
+        # remove units from Quantity or masked_Quantity inputs
+        values = _remove_units(values)
 
         vmin, vmax = self.get_limits(values)
 
@@ -386,3 +381,25 @@ class ZScaleInterval(BaseInterval):
             vmax = min(vmax, median + (npix - center_pixel) * slope)
 
         return vmin, vmax
+
+
+def _remove_units(values):
+    """
+    Remove units from Quantity or masked_Quantity objects.
+
+    Parameters
+    ----------
+    values : array-like
+        The input values.
+
+    Returns
+    -------
+    result : array-like
+        The input values with units removed.
+    """
+    if isinstance(values, u.Quantity):
+        values = values.value
+    if isinstance(values, np.ma.MaskedArray) and isinstance(values.data, u.Quantity):
+        values = np.ma.MaskedArray(values.data.value, mask=values.mask)
+
+    return values

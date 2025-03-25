@@ -17,6 +17,7 @@ from .interval import (
     ManualInterval,
     MinMaxInterval,
     PercentileInterval,
+    _remove_units,
 )
 from .stretch import (
     AsinhStretch,
@@ -126,6 +127,9 @@ class ImageNormalize(Normalize):
         if self.vmin is not None and self.vmax is not None:
             return
 
+        # remove units from Quantity or masked_Quantity inputs
+        data = _remove_units(data)
+
         # Define vmin and vmax from the interval class if not None
         if self.interval is None:
             if self.vmin is None:
@@ -168,6 +172,9 @@ class ImageNormalize(Normalize):
             0).  If `None`, then the `ImageNormalize` instance value is
             used.  This keyword has no effect if ``clip=True``.
         """
+        # remove units from Quantity or masked_Quantity inputs
+        values = _remove_units(values)
+
         if clip is None:
             clip = self.clip
 
