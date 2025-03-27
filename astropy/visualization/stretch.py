@@ -17,8 +17,10 @@ __all__ = [
     "HistEqStretch",
     "LinearStretch",
     "LogStretch",
+    "ModifiedSigmoidStretch",
     "PowerDistStretch",
     "PowerStretch",
+    "SigmoidStretch",
     "SinhStretch",
     "SqrtStretch",
     "SquaredStretch",
@@ -989,3 +991,231 @@ class CompositeStretch(CompositeTransform, BaseStretch):
         return self.transform_2(
             self.transform_1(values, clip=clip, out=out), clip=clip, out=out
         )
+
+
+class SigmoidStretch(BaseStretch):
+    """
+    A sigmoid stretch.
+
+    The stretch is given by:
+
+    .. math::
+        1 / (1 + \\exp{-scale * (x - center))}
+
+    This stretch is useful for enhancing low contrast features in the
+    data. The `scale` parameter controls the steepness of the sigmoid
+    curve, while the `center` parameter controls the location of the
+    center of the curve.
+
+    The output of this stretch can be over an interval smaller than
+    [0:1] (not great). For large values of ``scale``, the output will
+    map closer to [0:1]. Low scales give a more linear mapping. Large
+    scales give a mapping more like a step function at the ``center``
+    value.
+
+    Parameters
+    ----------
+    scale : float, optional
+        The scale.
+
+    center : float, optional
+        The center.
+    """
+
+    def __init__(self, scale=10, center=0.5):
+        super().__init__()
+        self.scale = scale
+        self.center = center
+
+    def __call__(self, values, clip=True, out=None):
+        values = _prepare(values, clip=clip, out=out)
+        if self.center <= 0 or self.center >= 1:
+            raise ValueError("center must be > 0 and < 1")
+
+        np.subtract(values, self.center, out=values)
+        np.multiply(values, -self.scale, out=values)
+        np.exp(values, out=values)
+        np.add(values, 1.0, out=values)
+        np.reciprocal(values, out=values)
+
+        if clip:
+            np.clip(values, 0, 1, out=values)
+
+        return values
+
+    @property
+    def inverse(self):
+        """A stretch object that performs the inverse operation."""
+        # plt.colorbar() requires the inverse to be defined
+        return InvertedSigmoidStretch(self.scale, self.center)
+
+
+class InvertedSigmoidStretch(BaseStretch):
+    """
+    An inverse sigmoid stretch.
+
+    This stretch gives +/- infinity values at the endpoints. This causes
+    plt.colorbar() to fail.
+
+    Parameters
+    ----------
+    scale : float, optional
+        The scale.
+
+    center : float, optional
+        The center.
+    """
+
+    def __init__(self, scale=10, center=0.5):
+        super().__init__()
+        self.scale = scale
+        self.center = center
+
+    def __call__(self, values, clip=True, out=None):
+        # z = c - (np.log((1 - x) / x) / a)
+        # z = c - (np.log((1 / x) - 1) / a)
+
+        values = _prepare(values, clip=clip, out=out)
+        if self.center <= 0 or self.center >= 1:
+            raise ValueError("center must be > 0 and < 1")
+
+        np.reciprocal(values, out=values)
+        np.subtract(values, 1, out=values)
+        np.log(values, out=values)
+        np.divide(values, self.scale, out=values)
+        np.subtract(values, self.center, out=values)
+        np.multiply(values, -1, out=values)
+
+        if clip:
+            np.clip(values, 0, 1, out=values)
+
+        return values
+
+    @property
+    def inverse(self):
+        """A stretch object that performs the inverse operation."""
+        return SigmoidStretch(self.scale, self.center)
+
+
+class ModifiedSigmoidStretch(BaseStretch):
+    """
+    A modified sigmoid stretch.
+
+    Always returns [0:1] but with discontinuities at x = center (not
+    great).
+
+    Keep scale < 40 to avoid overflow.
+
+    Parameters
+    ----------
+    scale : float, optional
+        The scale....
+
+    center : float, optional
+        The center....
+    """
+
+    def __init__(self, scale=10, center=0.5):
+        super().__init__()
+        self.scale = scale
+        self.center = center
+
+    def _calc_sigmoid(self, values, k):
+        # (1 + 2*k) / (1 + np.exp(-self.scale * (x - self.center))) - k
+
+        # TODO: figure out how to avoid the copy here
+        # It is necessary because on the in-place modifications,
+        # but this function is called for both np.where branches
+        values = values.copy()
+
+        np.subtract(values, self.center, out=values)
+        np.multiply(values, -self.scale, out=values)
+        np.exp(values, out=values)
+        np.add(values, 1.0, out=values)
+        np.divide(1 + 2 * k, values, out=values)
+        np.subtract(values, k, out=values)
+        return values
+
+    def __call__(self, values, clip=True, out=None):
+        values = _prepare(values, clip=clip, out=out)
+        if self.center <= 0 or self.center >= 1:
+            raise ValueError("center must be > 0 and < 1")
+
+        # k0 ensures f(0) = 0
+        # k1 ensures f(1) = 1
+        k0 = 1 / (np.exp(self.scale * self.center) - 1)
+        exp_tmp = np.exp(self.scale * (self.center - 1))
+        k1 = -exp_tmp / (exp_tmp - 1)
+
+        values = np.where(
+            values >= self.center,
+            self._calc_sigmoid(values, k1),
+            self._calc_sigmoid(values, k0),
+        )
+
+        if clip:
+            np.clip(values, 0, 1, out=values)
+
+        return values
+
+    @property
+    def inverse(self):
+        """A stretch object that performs the inverse operation."""
+        # plt.colorbar() requires the inverse to be defined
+        return InvertedModifiedSigmoidStretch(self.scale, self.center)
+
+
+class InvertedModifiedSigmoidStretch(BaseStretch):
+    """
+    Inverse of the modified sigmoid stretch.
+
+    Always returns [0:1] but with discontinuities at x = center (not
+    great).
+
+    Keep scale < 40 to avoid overflow.
+
+    Parameters
+    ----------
+    scale : float, optional
+        The scale....
+
+    center : float, optional
+        The center....
+    """
+
+    def __init__(self, scale=10, center=0.5):
+        super().__init__()
+        self.scale = scale
+        self.center = center
+
+    def _calc_inv_sigmoid(self, values, k):
+        # self.center + (np.log((1 + k - x) / (x + k)) / self.scale)
+        # cannot do this in-place because x appears twice
+        return self.center - (np.log((1 + k - values) / (values + k)) / self.scale)
+
+    def __call__(self, values, clip=True, out=None):
+        values = _prepare(values, clip=clip, out=out)
+        if self.center <= 0 or self.center >= 1:
+            raise ValueError("center must be > 0 and < 1")
+
+        # k0 ensures f(0) = 0
+        # k1 ensures f(1) = 1
+        k0 = 1 / (np.exp(self.scale * self.center) - 1)
+        exp_tmp = np.exp(self.scale * (self.center - 1))
+        k1 = -exp_tmp / (exp_tmp - 1)
+
+        values = np.where(
+            values >= 0.5,
+            self._calc_inv_sigmoid(values, k1),
+            self._calc_inv_sigmoid(values, k0),
+        )
+
+        if clip:
+            np.clip(values, 0, 1, out=values)
+
+        return values
+
+    @property
+    def inverse(self):
+        """A stretch object that performs the inverse operation."""
+        return ModifiedSigmoidStretch(self.scale, self.center)
