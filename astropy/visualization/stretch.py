@@ -1109,10 +1109,30 @@ class ModifiedSigmoidStretch(BaseStretch):
     Parameters
     ----------
     scale : float, optional
-        The scale....
+        The scale.
 
     center : float, optional
-        The center....
+        The center.
+
+    Examples
+    --------
+    .. plot::
+
+        from matplotlib import pyplot as plt
+        from astropy.visualization import (ModifiedSigmoidStretch,
+                                           SigmoidStretch)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        scales = [5, 10, 15, 20, 5, 5]
+        centers = [0.5, 0.3, 0.7, 0.1, 0.2, 0.9]
+        for scale, center in zip(scales, centers):
+            label1 = f'S, s={scale}, c={center}'
+            label2 = f'MS, s={scale}, c={center}'
+            ax.plot(x, SigmoidStretch(scale=scale, center=center)(x),
+                    label=label1)
+            ax.plot(x, ModifiedSigmoidStretch(scale=scale, center=center)(x),
+                    label=label2)
+            ax.axis('equal')
+        ax.legend(loc='lower right', fontsize=8)
     """
 
     def __init__(self, scale=10, center=0.5):
@@ -1181,6 +1201,31 @@ class InvertedModifiedSigmoidStretch(BaseStretch):
 
     center : float, optional
         The center....
+
+    Examples
+    --------
+    .. plot::
+
+        from matplotlib import pyplot as plt
+        from astroyp.visualization import ModifiedSigmoidStretch
+        from astropy.visualization.stretch import InvertedModifiedSigmoidStretch
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        scales = [5, 10, 15, 20, 5, 5]
+        centers = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+        centers = [0.5, 0.3, 0.7, 0.1, 0.2, 0.9]
+        colors = ('C0', 'C1', 'C2', 'C3', 'C4', 'C5')
+        for i, (scale, center) in enumerate(zip(scales, centers)):
+            label1 = f'MS, s={scale}, c={center}'
+            label2 = f'IMS, s={scale}, c={center}'
+
+            ax.plot(x, ModifiedSigmoidStretch(scale=scale, center=center)(x),
+                    label=label1, color=colors[i])
+            ax.plot(x, InvertedModifiedSigmoidStretch(scale=scale,
+                    center=center)(x), label=label2, color=colors[i],
+                    ls='dashed')
+            ax.axis('equal')
+        ax.legend(loc='lower right', fontsize=8)
     """
 
     def __init__(self, scale=10, center=0.5):
