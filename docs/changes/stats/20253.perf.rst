@@ -1,0 +1,8 @@
+``SigmaClip`` and ``sigma_clip`` now use the fast C implementation
+for ``axis=None`` when the ``cenfunc`` and ``stdfunc`` options
+support it, making the default flattened clipping several times
+faster for large arrays. As part of this change, when the clipping
+converges to an empty set (all values rejected), the
+``masked=False`` output now retains all of the values, consistent
+with the ``masked=True`` output and with axis-based clipping;
+previously, an empty array was returned.

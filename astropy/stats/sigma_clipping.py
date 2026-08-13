@@ -278,7 +278,13 @@ class SigmaClip:
         else:
             unit = None
 
-        if copy is False and masked is False and data.dtype.kind != "f":
+        axis_none = axis is None
+        if (
+            copy is False
+            and masked is False
+            and not axis_none
+            and data.dtype.kind != "f"
+        ):
             raise Exception(
                 "cannot mask non-floating-point array with NaN "
                 "values, set copy=True or masked=True to avoid "
@@ -348,6 +354,11 @@ class SigmaClip:
 
         if masked:
             result = np.ma.array(data, mask=mask, copy=copy)
+        elif axis_none:
+            # Match the documented axis=None, masked=False behavior:
+            # return a flattened array with the clipped values removed.
+            # The input data are never modified in this case.
+            result = data[~mask]
         else:
             if data.dtype.kind != "f":
                 # float array type is needed to insert nans into the array
@@ -358,6 +369,11 @@ class SigmaClip:
                 else:
                     result = data
             result[mask] = np.nan
+
+        if axis_none:
+            # Match the scalar bounds of the axis=None Python code path
+            bound_lo = bound_lo[()]
+            bound_hi = bound_hi[()]
 
         if unit is not None:
             result = result << unit
@@ -645,7 +661,6 @@ class SigmaClip:
         if (
             self.cenfunc in ("mean", "median")
             and self.stdfunc in ("std", "mad_std")
-            and axis is not None
             and not self.grow
         ):
             return self._sigmaclip_fast(
