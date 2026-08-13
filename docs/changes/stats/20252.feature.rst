@@ -1,0 +1,5 @@
+Added ``'biweight'`` as a string option for the ``cenfunc`` and
+``stdfunc`` keywords of ``SigmaClip``, ``sigma_clip``,
+``SigmaClippedStats``, and ``sigma_clipped_stats``. The options use
+the NaN-aware ``biweight_location`` and ``biweight_scale`` functions
+with their default tuning constants.
