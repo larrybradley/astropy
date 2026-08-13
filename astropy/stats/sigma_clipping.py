@@ -179,9 +179,6 @@ class SigmaClip:
         self.stdfunc = stdfunc
         self._cenfunc_parsed = self._parse_cenfunc(cenfunc)
         self._stdfunc_parsed = self._parse_stdfunc(stdfunc)
-        self._min_value = np.nan
-        self._max_value = np.nan
-        self._niterations = 0
         self.grow = grow
 
         # This just checks that SciPy is available, to avoid failing
@@ -247,15 +244,20 @@ class SigmaClip:
         self,
         data: ArrayLike,
         axis: int | tuple[int, ...] | None = None,
-    ) -> None:
+    ) -> tuple[float | NDArray, float | NDArray]:
+        # The bounds are returned rather than stored on the instance so
+        # that a single SigmaClip instance can be safely called
+        # concurrently from multiple threads.
         # ignore RuntimeWarning if the array (or along an axis) has only
         # NaNs
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             cen = self._cenfunc_parsed(data, axis=axis)
             std = self._stdfunc_parsed(data, axis=axis)
-            self._min_value = cen - (std * self.sigma_lower)
-            self._max_value = cen + (std * self.sigma_upper)
+            min_value = cen - (std * self.sigma_lower)
+            max_value = cen + (std * self.sigma_upper)
+
+        return min_value, max_value
 
     def _sigmaclip_fast(
         self,
@@ -400,16 +402,15 @@ class SigmaClip:
 
         nchanged = 1
         iteration = 0
+        min_value = max_value = np.nan
         while nchanged != 0 and (iteration < self.maxiters):
             iteration += 1
             size = filtered_data.size
-            self._compute_bounds(filtered_data, axis=None)
+            min_value, max_value = self._compute_bounds(filtered_data, axis=None)
             filtered_data = filtered_data[
-                (filtered_data >= self._min_value) & (filtered_data <= self._max_value)
+                (filtered_data >= min_value) & (filtered_data <= max_value)
             ]
             nchanged = size - filtered_data.size
-
-        self._niterations = iteration
 
         if masked:
             # return a masked array and optional bounds
@@ -418,12 +419,10 @@ class SigmaClip:
             # update the mask in place, ignoring RuntimeWarnings for
             # comparisons with NaN data values
             with np.errstate(invalid="ignore"):
-                filtered_data.mask |= np.logical_or(
-                    data < self._min_value, data > self._max_value
-                )
+                filtered_data.mask |= np.logical_or(data < min_value, data > max_value)
 
         if return_bounds:
-            return filtered_data, self._min_value, self._max_value
+            return filtered_data, min_value, max_value
         else:
             return filtered_data
 
@@ -499,28 +498,25 @@ class SigmaClip:
 
         nchanged = 1
         iteration = 0
+        min_value = max_value = np.nan
         while nchanged != 0 and (iteration < self.maxiters):
             iteration += 1
-            self._compute_bounds(filtered_data, axis=axis)
-            if not np.isscalar(self._min_value):
-                self._min_value = self._min_value.reshape(mshape)
-                self._max_value = self._max_value.reshape(mshape)
+            min_value, max_value = self._compute_bounds(filtered_data, axis=axis)
+            if not np.isscalar(min_value):
+                min_value = min_value.reshape(mshape)
+                max_value = max_value.reshape(mshape)
 
             with np.errstate(invalid="ignore"):
                 # Since these comparisons are always False for NaNs, the
                 # resulting mask contains only newly-rejected pixels and
                 # we can dilate it without growing masked pixels more
                 # than once.
-                new_mask = (filtered_data < self._min_value) | (
-                    filtered_data > self._max_value
-                )
+                new_mask = (filtered_data < min_value) | (filtered_data > max_value)
             if self.grow:
                 new_mask = self._binary_dilation(new_mask, kernel)
             filtered_data[new_mask] = np.nan
             nchanged = np.count_nonzero(new_mask)
             del new_mask
-
-        self._niterations = iteration
 
         if masked:
             # create an output masked array
@@ -534,13 +530,13 @@ class SigmaClip:
                     out = np.ma.masked_invalid(data, copy=False)
 
                     filtered_data = np.ma.masked_where(
-                        np.logical_or(out < self._min_value, out > self._max_value),
+                        np.logical_or(out < min_value, out > max_value),
                         out,
                         copy=False,
                     )
 
         if return_bounds:
-            return filtered_data, self._min_value, self._max_value
+            return filtered_data, min_value, max_value
         else:
             return filtered_data
 
@@ -625,7 +621,7 @@ class SigmaClip:
                 result = data
 
             if return_bounds:
-                return result, self._min_value, self._max_value
+                return result, np.nan, np.nan
             else:
                 return result
 
@@ -636,7 +632,7 @@ class SigmaClip:
                 result = np.full(data.shape, np.nan)
 
             if return_bounds:
-                return result, self._min_value, self._max_value
+                return result, np.nan, np.nan
             else:
                 return result
 
