@@ -283,6 +283,16 @@ class SimpleNorm:
         fraction of the normalized image. Must be in the range between 0
         and 1. The default is 0.1.
 
+    asinh_x0 : float, optional
+        For ``stretch='asinh'``, the zero point of the asinh curve
+        (where the asinh argument is zero), expressed as a fraction of
+        the normalized image. The stretch is most linear and has the
+        highest contrast at the zero point. Use a positive value to
+        place the zero point above ``vmin``, for example at the sky
+        level, so that the black point can be set below the sky. Must
+        be greater than or equal to 0 and less than 1. The default is
+        0, which places the zero point at ``vmin``.
+
     sinh_a : float, optional
         The scaling parameter for ``stretch='sinh'``. The default is
         0.3.
@@ -332,6 +342,7 @@ class SimpleNorm:
         power=1.0,
         log_a=1000,
         asinh_a=0.1,
+        asinh_x0=0.0,
         sinh_a=0.3,
         clip=False,
         invalid=-1.0,
@@ -357,7 +368,7 @@ class SimpleNorm:
         elif stretch == "log":
             stretch = LogStretch(log_a)
         elif stretch == "asinh":
-            stretch = AsinhStretch(asinh_a)
+            stretch = AsinhStretch(asinh_a, x0=asinh_x0)
         elif stretch == "sinh":
             stretch = SinhStretch(sinh_a)
         else:
@@ -478,6 +489,8 @@ def simple_norm(  # ruff: ignore[PLR0917]
     log_a=1000,
     invalid=-1.0,
     sinh_a=0.3,
+    *,
+    asinh_x0=0.0,
 ):
     """
     Return a Normalization class that can be used for displaying images
@@ -506,6 +519,16 @@ def simple_norm(  # ruff: ignore[PLR0917]
         transitions from linear to logarithmic behavior, expressed as a
         fraction of the normalized image. Must be in the range between 0
         and 1. The default is 0.1.
+
+    asinh_x0 : float, optional
+        For ``stretch='asinh'``, the zero point of the asinh curve
+        (where the asinh argument is zero), expressed as a fraction of
+        the normalized image. The stretch is most linear and has the
+        highest contrast at the zero point. Use a positive value to
+        place the zero point above ``vmin``, for example at the sky
+        level, so that the black point can be set below the sky. Must
+        be greater than or equal to 0 and less than 1. The default is
+        0, which places the zero point at ``vmin``.
 
     vmin : float, optional
         The pixel value of the minimum cut level. Data values less
@@ -575,6 +598,7 @@ def simple_norm(  # ruff: ignore[PLR0917]
         power=power,
         log_a=log_a,
         asinh_a=asinh_a,
+        asinh_x0=asinh_x0,
         sinh_a=sinh_a,
         clip=clip,
         invalid=invalid,
