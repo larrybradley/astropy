@@ -716,6 +716,40 @@ class AsinhStretch(BaseStretch):
         ax.set_ylabel('Output Value')
         ax.set_title(stretch.__class__.__name__)
         ax.legend(loc='lower right', fontsize=8)
+
+    The asinh stretch of a simulated image with the zero point at the
+    black point (``x0=0``) and at the sky level:
+
+    .. plot::
+        :show-source-link:
+
+        import numpy as np
+        from astropy.visualization import AsinhStretch, ImageNormalize
+        from matplotlib import pyplot as plt
+
+        # Simulated sky-subtracted image with a noise standard deviation of 1
+        rng = np.random.default_rng(0)
+        yy, xx = np.mgrid[0:101, 0:101]
+        image = rng.normal(0.0, 1.0, yy.shape)
+        for x, y, amp, sigma in [(30, 40, 300, 3), (70, 65, 30, 6), (65, 20, 8, 2)]:
+            image += amp * np.exp(-((xx - x)**2 + (yy - y)**2) / (2 * sigma**2))
+
+        # Black point 3 below the sky and a softening of 1 (the noise level)
+        vmin, vmax = -3.0, 300.0
+        a = 1.0 / (vmax - vmin)
+        x0 = (0.0 - vmin) / (vmax - vmin)  # zero point at the sky
+
+        fig, axs = plt.subplots(1, 2, figsize=(8, 4.5), layout='constrained')
+        for ax, stretch, title in zip(
+            axs,
+            (AsinhStretch(a), AsinhStretch(a, x0=x0)),
+            ('x0 = 0 (zero point at vmin)', f'x0 = {x0:.4f} (zero point at sky)'),
+        ):
+            norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=stretch)
+            ax.imshow(image, norm=norm, origin='lower', cmap='gray')
+            ax.set_title(title, fontsize=10)
+            ax.set_xticks([])
+            ax.set_yticks([])
     """
 
     def __init__(self, a=0.1, x0=0.0):
@@ -746,61 +780,9 @@ class AsinhStretch(BaseStretch):
     @property
     def inverse(self):
         """A stretch object that performs the inverse operation."""
-        if self.x0 == 0:
-            return SinhStretch(a=1.0 / np.arcsinh(1.0 / self.a))
-        return InvertedAsinhStretch(a=self.a, x0=self.x0)
-
-
-class InvertedAsinhStretch(BaseStretch):
-    r"""
-    Inverse transformation for `~astropy.visualization.AsinhStretch`.
-
-    The stretch is given by:
-
-    .. math::
-        y = x_0 + a \, {\rm sinh}(x D - {\rm asinh}(x_0 / a)),
-
-    where :math:`D = {\rm asinh}((1 - x_0) / a) + {\rm asinh}(x_0 / a)`.
-
-    Parameters
-    ----------
-    a : float, optional
-        The ``a`` parameter of the forward
-        `~astropy.visualization.AsinhStretch`. ``a`` must be greater
-        than 0. Default is 0.1.
-
-    x0 : float, optional
-        The ``x0`` parameter of the forward
-        `~astropy.visualization.AsinhStretch`. ``x0`` must be greater
-        than or equal to 0 and less than 1. Default is 0.
-    """
-
-    def __init__(self, a=0.1, x0=0.0):
-        super().__init__()
-        if a <= 0:
-            raise ValueError("a must be > 0")
-        if not 0 <= x0 < 1:
-            raise ValueError("x0 must be >= 0 and < 1")
-        self.a = a
-        self.x0 = x0
-
-    def __call__(self, values, clip=True, out=None):
-        values = _prepare(values, clip=clip, out=out)
         offset = np.arcsinh(self.x0 / self.a)
         norm = np.arcsinh((1.0 - self.x0) / self.a) + offset
-        np.multiply(values, norm, out=values)
-        np.subtract(values, offset, out=values)
-        np.sinh(values, out=values)
-        # Adding sinh(offset) instead of x0 / a makes the output exactly
-        # 0 for an input of 0.
-        np.add(values, np.sinh(offset), out=values)
-        np.multiply(values, self.a, out=values)
-        return values
-
-    @property
-    def inverse(self):
-        """A stretch object that performs the inverse operation."""
-        return AsinhStretch(a=self.a, x0=self.x0)
+        return SinhStretch(a=1.0 / norm, x0=offset / norm)
 
 
 class SinhStretch(BaseStretch):
@@ -810,7 +792,11 @@ class SinhStretch(BaseStretch):
     The stretch is given by:
 
     .. math::
-        y = \frac{{\rm sinh}(x / a)}{{\rm sinh}(1 / a)}
+        y = \frac{{\rm sinh}((x - x_0) / a) + {\rm sinh}(x_0 / a)}
+                 {{\rm sinh}((1 - x_0) / a) + {\rm sinh}(x_0 / a)},
+
+    which reduces to :math:`y = {\rm sinh}(x / a) / {\rm sinh}(1 / a)`
+    for the default :math:`x_0 = 0`.
 
     Parameters
     ----------
@@ -819,6 +805,17 @@ class SinhStretch(BaseStretch):
         becomes more linear for larger ``a`` values and more exponential
         for smaller ``a`` values. ``a`` must be greater than 0. Default
         is 1/3.
+
+    x0 : float, optional
+        The zero point of the sinh curve, i.e., the input value where
+        the sinh argument is zero, expressed as a fraction of the
+        normalized image. The stretch is most linear and has the
+        lowest contrast at the zero point, which is also its inflection
+        point. With the default of 0, the zero point is at the black
+        point (``vmin``). The inverse of an
+        `~astropy.visualization.AsinhStretch` with a nonzero ``x0`` is
+        a sinh stretch with a nonzero ``x0``. ``x0`` must be greater
+        than or equal to 0 and less than 1. Default is 0.
 
     Examples
     --------
@@ -850,25 +847,67 @@ class SinhStretch(BaseStretch):
         ax.set_ylabel('Output Value')
         ax.set_title(stretch.__class__.__name__)
         ax.legend(loc='upper left', fontsize=8)
+
+    The sinh stretch of a simulated image with and without an offset
+    zero point:
+
+    .. plot::
+        :show-source-link:
+
+        import numpy as np
+        from astropy.visualization import ImageNormalize, SinhStretch
+        from matplotlib import pyplot as plt
+
+        # Simulated sky-subtracted image with a noise standard deviation of 1
+        rng = np.random.default_rng(0)
+        yy, xx = np.mgrid[0:101, 0:101]
+        image = rng.normal(0.0, 1.0, yy.shape)
+        for x, y, amp, sigma in [(30, 40, 300, 3), (70, 65, 30, 6), (65, 20, 8, 2)]:
+            image += amp * np.exp(-((xx - x)**2 + (yy - y)**2) / (2 * sigma**2))
+
+        vmin, vmax = -2.0, 300.0
+        fig, axs = plt.subplots(1, 2, figsize=(8, 4.5), layout='constrained')
+        for ax, stretch, title in zip(
+            axs, (SinhStretch(), SinhStretch(x0=0.5)), ('x0 = 0', 'x0 = 0.5')
+        ):
+            norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=stretch)
+            ax.imshow(image, norm=norm, origin='lower', cmap='gray')
+            ax.set_title(title, fontsize=10)
+            ax.set_xticks([])
+            ax.set_yticks([])
     """
 
-    def __init__(self, a=1.0 / 3.0):
+    def __init__(self, a=1.0 / 3.0, x0=0.0):
         super().__init__()
         if a <= 0:
             raise ValueError("a must be > 0")
+        if not 0 <= x0 < 1:
+            raise ValueError("x0 must be >= 0 and < 1")
         self.a = a
+        self.x0 = x0
 
     def __call__(self, values, clip=True, out=None):
         values = _prepare(values, clip=clip, out=out)
-        np.true_divide(values, self.a, out=values)
-        np.sinh(values, out=values)
-        np.true_divide(values, np.sinh(1.0 / self.a), out=values)
+        if self.x0 == 0:
+            np.true_divide(values, self.a, out=values)
+            np.sinh(values, out=values)
+            np.true_divide(values, np.sinh(1.0 / self.a), out=values)
+        else:
+            offset = np.sinh(self.x0 / self.a)
+            norm = np.sinh((1.0 - self.x0) / self.a) + offset
+            np.subtract(values, self.x0, out=values)
+            np.true_divide(values, self.a, out=values)
+            np.sinh(values, out=values)
+            np.add(values, offset, out=values)
+            np.true_divide(values, norm, out=values)
         return values
 
     @property
     def inverse(self):
         """A stretch object that performs the inverse operation."""
-        return AsinhStretch(a=1.0 / np.sinh(1.0 / self.a))
+        offset = np.sinh(self.x0 / self.a)
+        norm = np.sinh((1.0 - self.x0) / self.a) + offset
+        return AsinhStretch(a=1.0 / norm, x0=offset / norm)
 
 
 class HistEqStretch(BaseStretch):
