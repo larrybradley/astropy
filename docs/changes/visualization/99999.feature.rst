@@ -3,5 +3,6 @@ of the asinh curve independently of the black point (``vmin``). This
 allows an asinh stretch with its zero point at the sky level and the
 black point set below the sky. The parameter is also available as
 ``asinh_x0`` in ``simple_norm`` and ``SimpleNorm``. ``SinhStretch`` has
-a matching ``x0`` parameter, and the inverse of each stretch is the
-other stretch for any ``x0``.
+a matching ``x0`` parameter, available as ``sinh_x0`` in
+``simple_norm`` and ``SimpleNorm``, and the inverse of each stretch is
+the other stretch for any ``x0``.

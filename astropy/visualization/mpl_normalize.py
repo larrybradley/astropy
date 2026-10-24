@@ -297,6 +297,14 @@ class SimpleNorm:
         The scaling parameter for ``stretch='sinh'``. The default is
         0.3.
 
+    sinh_x0 : float, optional
+        For ``stretch='sinh'``, the zero point of the sinh curve (where
+        the sinh argument is zero), expressed as a fraction of the
+        normalized image. The stretch is most linear and has the lowest
+        contrast at the zero point. Must be greater than or equal to 0
+        and less than 1. The default is 0, which places the zero point
+        at ``vmin``.
+
     clip : bool, optional
         If `True`, data values outside the [0:1] range are clipped to
         the [0:1] range.
@@ -344,6 +352,7 @@ class SimpleNorm:
         asinh_a=0.1,
         asinh_x0=0.0,
         sinh_a=0.3,
+        sinh_x0=0.0,
         clip=False,
         invalid=-1.0,
     ):
@@ -370,7 +379,7 @@ class SimpleNorm:
         elif stretch == "asinh":
             stretch = AsinhStretch(asinh_a, x0=asinh_x0)
         elif stretch == "sinh":
-            stretch = SinhStretch(sinh_a)
+            stretch = SinhStretch(sinh_a, x0=sinh_x0)
         else:
             raise ValueError(f"Unknown stretch: {stretch}.")
         self.stretch = stretch
@@ -491,6 +500,7 @@ def simple_norm(  # ruff: ignore[PLR0917]
     sinh_a=0.3,
     *,
     asinh_x0=0.0,
+    sinh_x0=0.0,
 ):
     """
     Return a Normalization class that can be used for displaying images
@@ -578,6 +588,14 @@ def simple_norm(  # ruff: ignore[PLR0917]
         The scaling parameter for ``stretch='sinh'``. The default is
         0.3.
 
+    sinh_x0 : float, optional
+        For ``stretch='sinh'``, the zero point of the sinh curve (where
+        the sinh argument is zero), expressed as a fraction of the
+        normalized image. The stretch is most linear and has the lowest
+        contrast at the zero point. Must be greater than or equal to 0
+        and less than 1. The default is 0, which places the zero point
+        at ``vmin``.
+
     Returns
     -------
     result : `ImageNormalize` instance
@@ -600,6 +618,7 @@ def simple_norm(  # ruff: ignore[PLR0917]
         asinh_a=asinh_a,
         asinh_x0=asinh_x0,
         sinh_a=sinh_a,
+        sinh_x0=sinh_x0,
         clip=clip,
         invalid=invalid,
     )

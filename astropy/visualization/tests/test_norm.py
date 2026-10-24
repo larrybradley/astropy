@@ -298,6 +298,17 @@ class TestImageScaling:
         ref = np.sinh(DATA2SCL / sinh_a) / np.sinh(1 / sinh_a)
         assert_allclose(norm(DATA2), ref, atol=0, rtol=1.0e-5)
 
+    def test_sinh_with_sinh_x0(self):
+        """Test sinh scaling with a custom sinh_x0."""
+        sinh_a = 0.5
+        sinh_x0 = 0.2
+        norm = simple_norm(DATA2, stretch="sinh", sinh_a=sinh_a, sinh_x0=sinh_x0)
+        assert norm.stretch.x0 == sinh_x0
+        offset = np.sinh(sinh_x0 / sinh_a)
+        denom = np.sinh((1.0 - sinh_x0) / sinh_a) + offset
+        ref = (np.sinh((DATA2SCL - sinh_x0) / sinh_a) + offset) / denom
+        assert_allclose(norm(DATA2), ref, atol=0, rtol=1.0e-5)
+
     def test_min(self):
         """Test linear scaling."""
         norm = simple_norm(DATA2, stretch="linear", vmin=1.0, clip=True)
@@ -330,13 +341,14 @@ def test_simplenorm(stretch):
 
 
 @pytest.mark.skipif(not HAS_PLT, reason="requires matplotlib")
-def test_simplenorm_asinh_x0():
+@pytest.mark.parametrize("stretch", ["asinh", "sinh"])
+def test_simplenorm_x0(stretch):
     data = np.arange(25).reshape((5, 5))
-    kwargs = {"asinh_a": 0.3, "asinh_x0": 0.1}
-    snorm = SimpleNorm("asinh", **kwargs)
-    assert snorm.stretch.a == kwargs["asinh_a"]
-    assert snorm.stretch.x0 == kwargs["asinh_x0"]
-    assert_allclose(snorm(data)(data), simple_norm(data, "asinh", **kwargs)(data))
+    kwargs = {f"{stretch}_a": 0.3, f"{stretch}_x0": 0.1}
+    snorm = SimpleNorm(stretch, **kwargs)
+    assert snorm.stretch.a == kwargs[f"{stretch}_a"]
+    assert snorm.stretch.x0 == kwargs[f"{stretch}_x0"]
+    assert_allclose(snorm(data)(data), simple_norm(data, stretch, **kwargs)(data))
 
 
 @pytest.mark.skipif(not HAS_PLT, reason="requires matplotlib")
