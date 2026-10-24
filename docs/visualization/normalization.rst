@@ -213,6 +213,38 @@ stretch is available in :func:`~astropy.visualization.simple_norm` and
 :class:`~astropy.visualization.SimpleNorm` with the ``asinh_a`` and
 ``asinh_x0`` keywords.
 
+The :class:`~astropy.visualization.AsinhNorm` class sets up this
+stretch from the image itself. It places the zero point at the
+background level and sets the softening and the lower cut level in
+units of the background noise. The upper cut level is set by a
+percentile of the image values. The background and noise are estimated
+from each image with sigma clipping, so a single instance can be used
+for many images. Known values can be input for a given image, for
+example ``norm(image, background=0.0, noise=1.3)``. Note that this
+class is different from :class:`matplotlib.colors.AsinhNorm`. Calling
+an instance with an image returns an
+:class:`~astropy.visualization.mpl_normalize.ImageNormalize` instance:
+
+.. plot::
+    :include-source:
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from astropy.visualization import AsinhNorm
+
+    # Simulated image with a background of 100 and noise of 5
+    rng = np.random.default_rng(0)
+    yy, xx = np.mgrid[0:101, 0:101]
+    image = rng.normal(100.0, 5.0, yy.shape)
+    for x, y, amp, sigma in [(30, 40, 1500, 3), (70, 65, 150, 6), (65, 20, 40, 2)]:
+        image += amp * np.exp(-((xx - x)**2 + (yy - y)**2) / (2 * sigma**2))
+
+    # Softening of 1 times the noise and the lower cut level 3 times
+    # the noise below the background
+    norm = AsinhNorm(softening=1.0, min_nsigma=-3.0)
+    fig, ax = plt.subplots()
+    ax.imshow(image, norm=norm(image), origin='lower', cmap='gray')
+
 
 Combining transformations
 =========================

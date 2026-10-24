@@ -5,9 +5,11 @@ import pytest
 from numpy import ma
 from numpy.testing import assert_allclose, assert_array_equal, assert_equal
 
+from astropy.stats import SigmaClip, sigma_clipped_stats
 from astropy.utils.compat.optional_deps import HAS_PLT
 from astropy.visualization.interval import ManualInterval, PercentileInterval
 from astropy.visualization.mpl_normalize import (
+    AsinhNorm,
     ImageNormalize,
     SimpleNorm,
     imshow_norm,
@@ -446,3 +448,158 @@ def test_norm_without_data():
 
     assert norm_without_data.vmin == interval.vmin
     assert norm_without_data.vmax == interval.vmax
+
+
+@pytest.fixture(name="noise_image")
+def fixture_noise_image():
+    """
+    Return an image with a background of 10, noise of 2, and a few
+    bright pixels.
+    """
+    rng = np.random.default_rng(0)
+    data = rng.normal(10.0, 2.0, (100, 100))
+    data[0, :5] = 1000.0
+    return data
+
+
+@pytest.mark.skipif(not HAS_PLT, reason="requires matplotlib")
+class TestAsinhNorm:
+    def test_known_values(self):
+        data = np.linspace(-5.0, 120.0, 51)
+        norm = AsinhNorm(softening=2.0, min_nsigma=-1.0)(
+            data, background=5.0, noise=1.0, vmax=100.0
+        )
+        assert isinstance(norm, ImageNormalize)
+        assert norm.vmin == 4.0
+        assert norm.vmax == 100.0
+        assert_allclose(norm.stretch.a, 2.0 / 96.0)
+        assert_allclose(norm.stretch.x0, 1.0 / 96.0)
+
+        offset = np.arcsinh(0.5)
+        ref = (np.arcsinh((data - 5.0) / 2.0) + offset) / (
+            np.arcsinh(95.0 / 2.0) + offset
+        )
+        result = norm(data)
+        mask = (data >= 4.0) & (data <= 100.0)
+        assert_allclose(result[mask], ref[mask], atol=1e-12)
+        assert np.all(result[data < 4.0] < 0)
+        assert np.all(result[data > 100.0] > 1)
+
+    def test_sky_subtracted(self):
+        """
+        Test that a sky-subtracted image with the zero point at the
+        background reproduces arcsinh(data / 2), with the black point
+        at -0.5 in stretched units.
+        """
+        vmin = -1.0421906109874948  # arcsinh(vmin / 2) = -0.5
+        vmax = 377.62182631705866
+        data = np.linspace(vmin, vmax, 1001)
+        norm = AsinhNorm(softening=2.0, min_nsigma=vmin)(
+            data, background=0.0, noise=1.0, vmax=vmax
+        )
+        ref = (np.arcsinh(data / 2) + 0.5) / (np.arcsinh(vmax / 2) + 0.5)
+        assert_allclose(norm(data), ref, atol=1e-12, rtol=0)
+
+    def test_estimated_values(self, noise_image):
+        _, median, std = sigma_clipped_stats(noise_image, sigma=3.0)
+        vmax = np.percentile(noise_image, 99.7)
+        norm = AsinhNorm()(noise_image)
+        assert_allclose(norm.vmin, median - std, rtol=1e-12)
+        assert_allclose(norm.vmax, vmax, rtol=1e-12)
+        span = vmax - (median - std)
+        assert_allclose(norm.stretch.a, 2.0 * std / span, rtol=1e-12)
+        assert_allclose(norm.stretch.x0, std / span, rtol=1e-12)
+        assert_allclose(median, 10.0, atol=0.05)
+        assert_allclose(std, 2.0, atol=0.05)
+
+    def test_partial_override(self, noise_image):
+        _, median, std = sigma_clipped_stats(noise_image, sigma=3.0)
+        norm = AsinhNorm()(noise_image, background=0.0)
+        assert_allclose(norm.vmin, -std, rtol=1e-12)
+        norm = AsinhNorm()(noise_image, noise=5.0)
+        assert_allclose(norm.vmin, median - 5.0, rtol=1e-12)
+
+    def test_sigma_clip(self, noise_image):
+        _, median, std = sigma_clipped_stats(noise_image, sigma=2.0, maxiters=10)
+        norm = AsinhNorm(sigma_clip=SigmaClip(sigma=2.0, maxiters=10))
+        assert_allclose(norm(noise_image).vmin, median - std, rtol=1e-12)
+
+    def test_reuse(self, noise_image):
+        norm = AsinhNorm(min_nsigma=-2.0)
+        norm1 = norm(noise_image)
+        norm2 = norm(3.0 * noise_image)
+        assert_allclose(norm2.vmin, 3.0 * norm1.vmin, rtol=1e-12)
+        assert_allclose(norm2.vmax, 3.0 * norm1.vmax, rtol=1e-12)
+        assert_allclose(norm2.stretch.a, norm1.stretch.a, rtol=1e-12)
+        assert_allclose(norm2.stretch.x0, norm1.stretch.x0, rtol=1e-12)
+
+    def test_invalid_data_values(self, noise_image):
+        data = noise_image.copy()
+        data[1, :10] = np.nan
+        data[2, :10] = np.inf
+        masked = ma.MaskedArray(noise_image, mask=np.zeros(data.shape, bool))
+        masked.mask[1:3, :10] = True
+        norm1 = AsinhNorm()(data)
+        norm2 = AsinhNorm()(masked)
+        _, median, std = sigma_clipped_stats(masked, sigma=3.0)
+        assert_allclose(norm1.vmin, median - std, rtol=1e-12)
+        assert_allclose(norm2.vmin, median - std, rtol=1e-12)
+        assert_allclose(norm1.vmax, norm2.vmax, rtol=1e-12)
+
+    def test_max_percent(self, noise_image):
+        norm = AsinhNorm(max_percent=99.0)(noise_image)
+        assert_allclose(norm.vmax, np.percentile(noise_image, 99.0), rtol=1e-12)
+
+    def test_clip_invalid(self, noise_image):
+        norm = AsinhNorm(clip=True)(noise_image)
+        result = norm(noise_image)
+        assert result.min() == 0.0
+        assert result.max() == 1.0
+
+        norm = AsinhNorm(invalid=None)(noise_image)
+        assert norm.invalid is None
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"softening": 0.0}, "softening must be > 0"),
+            ({"softening": -1.0}, "softening must be > 0"),
+            ({"min_nsigma": 0.5}, "min_nsigma must be <= 0"),
+            ({"max_percent": 0.0}, "max_percent must be > 0 and <= 100"),
+            ({"max_percent": 101.0}, "max_percent must be > 0 and <= 100"),
+        ],
+    )
+    def test_invalid_init(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            AsinhNorm(**kwargs)
+
+    def test_invalid_call(self, noise_image):
+        norm = AsinhNorm()
+        with pytest.raises(ValueError, match="finite, unmasked values"):
+            norm(np.full((10, 10), np.nan))
+        with pytest.raises(ValueError, match="noise must be > 0"):
+            norm(np.full((10, 10), 3.0))
+        with pytest.raises(ValueError, match="noise must be > 0"):
+            norm(noise_image, noise=0.0)
+        match = "vmax must be greater than the background"
+        with pytest.raises(ValueError, match=match):
+            norm(noise_image, vmax=5.0)
+        with pytest.raises(ValueError, match=match):
+            norm(noise_image, background=2000.0)
+
+    def test_imshow(self, noise_image):
+        from matplotlib.figure import Figure
+        from matplotlib.image import AxesImage
+
+        fig = Figure()
+        ax = fig.add_subplot()
+        norm = AsinhNorm()
+        axim = norm.imshow(noise_image, ax=ax, background=10.0, origin="lower")
+        assert isinstance(axim, AxesImage)
+        assert axim.origin == "lower"
+        expected = norm(noise_image, background=10.0)
+        assert axim.norm.vmin == expected.vmin
+        assert axim.norm.vmax == expected.vmax
+
+        with pytest.raises(ValueError, match="already defines the norm"):
+            norm.imshow(noise_image, ax=ax, norm=ImageNormalize())
