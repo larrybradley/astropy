@@ -161,6 +161,21 @@ def test_histeqstretch_invalid():
     assert_equal(InvertedHistEqStretch(data)(data), result)
 
 
+@pytest.mark.parametrize("a", [0.5, 1.5, 2.5])
+def test_powerstretch_invalid_noninteger_a(a):
+    values = np.array([-0.5, 0.0, 0.5, np.nan])
+    result = PowerStretch(a)(values, clip=False, invalid=-1.0)
+    assert_equal(result[:3], [-1.0, 0.0, 0.5**a])
+    assert np.isnan(result[3])
+
+
+@pytest.mark.parametrize("a", [1, 2.0, 3])
+def test_powerstretch_invalid_integer_a(a):
+    values = np.array([-0.5, 0.5])
+    result = PowerStretch(a)(values, clip=False, invalid=-1.0)
+    assert_equal(result, values**a)
+
+
 def test_linearstretch_clip():
     data = np.linspace(0, 1, 100)
     stretch = LinearStretch(slope=2)

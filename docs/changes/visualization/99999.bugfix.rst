@@ -1,0 +1,3 @@
+Fixed ``PowerStretch`` so that the ``invalid`` value replaces the NaN
+values generated for negative inputs with any non-integer power, not
+only powers between 0 and 1.

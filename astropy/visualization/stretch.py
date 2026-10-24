@@ -330,8 +330,9 @@ class PowerStretch(BaseStretch):
             The transformed values.
         """
         values = _prepare(values, clip=clip, out=out)
+        # Negative values raised to a non-integer power are NaN
         replace_invalid = (
-            not clip and invalid is not None and ((-1 < self.a < 0) or (0 < self.a < 1))
+            not clip and invalid is not None and not float(self.a).is_integer()
         )
         with np.errstate(invalid="ignore"):
             if replace_invalid:
