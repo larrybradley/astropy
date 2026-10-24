@@ -1,0 +1,5 @@
+Added an ``x0`` parameter to ``AsinhStretch`` that sets the zero point
+of the asinh curve independently of the black point (``vmin``). This
+allows an asinh stretch with its zero point at the sky level and the
+black point set below the sky. The parameter is also available as ``asinh_x0`` in
+``simple_norm`` and ``SimpleNorm``.

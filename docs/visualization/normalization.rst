@@ -175,6 +175,44 @@ but this can be disabled::
     our stretches and DS9 is that we have adjusted them so that the
     [0:1] range always maps exactly to the [0:1] range.
 
+Setting the zero point of an asinh stretch
+------------------------------------------
+
+The zero point of an asinh stretch is the input value where the asinh
+argument is zero. The stretch is most linear and has the highest
+contrast there. By default, :class:`~astropy.visualization.AsinhStretch`
+places the zero point at the black point, i.e., at the minimum value
+of the interval (``vmin``). A common way to display astronomical
+images (`Lupton, Gunn & Szalay 1999
+<https://ui.adsabs.harvard.edu/abs/1999AJ....118.1406L>`_) instead
+places the zero point at the sky level. The ``a`` parameter is set
+near the noise level, so the stretch is linear for the sky noise and
+logarithmic for bright sources. The black point is then set a little
+below the sky so that negative noise fluctuations are not all clipped
+to black.
+
+The ``x0`` parameter sets the zero point independently of the black
+point. It is expressed as a fraction of the normalized interval. For
+a sky level ``sky``, use ``x0 = (sky - vmin) / (vmax - vmin)``.
+Similarly, ``a`` is expressed as a fraction of the interval. For
+example, for a sky-subtracted image with a noise standard deviation
+of 1, a zero point at the sky, a softening of 2 (twice the noise), and
+the black point 1 below the sky::
+
+    >>> from astropy.visualization import AsinhStretch, ManualInterval
+    >>> vmin, vmax = -1.0, 100.0
+    >>> a = 2.0 / (vmax - vmin)
+    >>> x0 = (0.0 - vmin) / (vmax - vmin)
+    >>> transform = AsinhStretch(a=a, x0=x0) + ManualInterval(vmin, vmax)
+    >>> transform([-1.0, 0.0, 1.0, 10.0, 100.0])  # doctest: +FLOAT_CMP
+    array([0.        , 0.09460602, 0.18921204, 0.54923033, 1.        ])
+
+The sky (0) and the values 1 above and below it are equally spaced
+in the output, because the stretch is linear near the sky. The same
+stretch is available in :func:`~astropy.visualization.simple_norm` and
+:class:`~astropy.visualization.SimpleNorm` with the ``asinh_a`` and
+``asinh_x0`` keywords.
+
 
 Combining transformations
 =========================

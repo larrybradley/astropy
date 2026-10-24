@@ -8,6 +8,7 @@ from astropy.visualization.stretch import (
     AsinhStretch,
     ContrastBiasStretch,
     HistEqStretch,
+    InvertedAsinhStretch,
     InvertedHistEqStretch,
     InvertedLogStretch,
     InvertedPowerDistStretch,
@@ -33,6 +34,7 @@ RESULTS[PowerStretch(0.5)] = np.array([0.0, 0.5, 0.70710678, 0.8660254, 1.0])
 RESULTS[PowerDistStretch()] = np.array([0.0, 0.004628, 0.030653, 0.177005, 1.0])
 RESULTS[LogStretch()] = np.array([0.0, 0.799776, 0.899816, 0.958408, 1.0])
 RESULTS[AsinhStretch()] = np.array([0.0, 0.549402, 0.77127, 0.904691, 1.0])
+RESULTS[AsinhStretch(x0=0.3)] = np.array([0.0, 0.299656, 0.730988, 0.902573, 1.0])
 RESULTS[SinhStretch()] = np.array([0.0, 0.082085, 0.212548, 0.46828, 1.0])
 RESULTS[ContrastBiasStretch(contrast=2.0, bias=0.4)] = np.array(
     [-0.3, 0.2, 0.7, 1.2, 1.7]
@@ -152,6 +154,54 @@ def test_sinh_a():
     a_inv = 1.0 / np.arcsinh(1.0 / a)
     z = AsinhStretch(a=a)
     assert_allclose(z.inverse.a, a_inv)
+
+
+@pytest.mark.parametrize("x0", [-0.1, 1.0, 1.5, np.nan])
+def test_invalid_asinh_x0(x0):
+    match = "x0 must be >= 0 and < 1"
+    with pytest.raises(ValueError, match=match):
+        AsinhStretch(x0=x0)
+    with pytest.raises(ValueError, match=match):
+        InvertedAsinhStretch(x0=x0)
+
+
+@pytest.mark.parametrize("a", [-2.0, -1, 0.0])
+def test_invalid_inverted_asinh_a(a):
+    with pytest.raises(ValueError, match="a must be > 0"):
+        InvertedAsinhStretch(a=a)
+
+
+@pytest.mark.parametrize("a", [0.01, 0.1, 0.9, 3.0])
+def test_asinh_x0_zero(a):
+    x = np.linspace(-0.5, 1.5, 101)
+    expected = AsinhStretch(a=a)(x, clip=False)
+    assert_equal(AsinhStretch(a=a, x0=0)(x, clip=False), expected)
+    assert_equal(np.arcsinh(x / a) / np.arcsinh(1.0 / a), expected)
+
+    inverse = AsinhStretch(a=a, x0=0).inverse
+    assert isinstance(inverse, SinhStretch)
+    assert_equal(inverse.a, AsinhStretch(a=a).inverse.a)
+
+
+@pytest.mark.parametrize("a", [0.01, 0.1, 0.9, 3.0])
+@pytest.mark.parametrize("x0", [0.0, 0.003, 0.2, 0.5, 0.9])
+def test_asinh_x0(a, x0):
+    x = np.linspace(0, 1, 101)
+    stretch = AsinhStretch(a=a, x0=x0)
+    result = stretch(x)
+    denom = np.arcsinh((1 - x0) / a) + np.arcsinh(x0 / a)
+    expected = (np.arcsinh((x - x0) / a) + np.arcsinh(x0 / a)) / denom
+    assert_allclose(result, expected, rtol=1e-12, atol=1e-15)
+    assert result[0] == 0.0
+    assert_allclose(result[-1], 1.0, rtol=1e-15)
+
+    inverse_result = stretch.inverse(result, clip=False)
+    assert_allclose(inverse_result, x, atol=1e-12)
+    assert inverse_result[0] == 0.0
+    inverse = stretch.inverse.inverse
+    assert isinstance(inverse, AsinhStretch)
+    assert_allclose(inverse.a, a)
+    assert inverse.x0 == x0
 
 
 def test_histeqstretch_invalid():

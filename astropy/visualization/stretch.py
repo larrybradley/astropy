@@ -656,7 +656,11 @@ class AsinhStretch(BaseStretch):
     The stretch is given by:
 
     .. math::
-        y = \frac{{\rm asinh}(x / a)}{{\rm asinh}(1 / a)}.
+        y = \frac{{\rm asinh}((x - x_0) / a) + {\rm asinh}(x_0 / a)}
+                 {{\rm asinh}((1 - x_0) / a) + {\rm asinh}(x_0 / a)},
+
+    which reduces to :math:`y = {\rm asinh}(x / a) / {\rm asinh}(1 / a)`
+    for the default :math:`x_0 = 0`.
 
     Parameters
     ----------
@@ -667,6 +671,20 @@ class AsinhStretch(BaseStretch):
         image. The stretch becomes more linear for larger ``a`` values
         and more logarithmic for smaller ``a`` values. ``a`` must be
         greater than 0. Default is 0.1.
+
+    x0 : float, optional
+        The zero point of the asinh curve, i.e., the input value where
+        the asinh argument is zero, expressed as a fraction of the
+        normalized image. The stretch is most linear and has the
+        highest contrast at the zero point, which is also its
+        inflection point. The stretch becomes logarithmic for input
+        values more than about ``a`` above it. With the default of 0,
+        the zero point is at the black point (``vmin``). A positive
+        ``x0`` places the zero point above the black point, for example
+        at the sky level of an image, so that the black point can be
+        set below the sky. For a sky level ``sky``, use ``x0 = (sky -
+        vmin) / (vmax - vmin)``. ``x0`` must be greater than or equal
+        to 0 and less than 1. Default is 0.
 
     Examples
     --------
@@ -700,23 +718,89 @@ class AsinhStretch(BaseStretch):
         ax.legend(loc='lower right', fontsize=8)
     """
 
-    def __init__(self, a=0.1):
+    def __init__(self, a=0.1, x0=0.0):
         super().__init__()
         if a <= 0:
             raise ValueError("a must be > 0")
+        if not 0 <= x0 < 1:
+            raise ValueError("x0 must be >= 0 and < 1")
         self.a = a
+        self.x0 = x0
 
     def __call__(self, values, clip=True, out=None):
         values = _prepare(values, clip=clip, out=out)
-        np.true_divide(values, self.a, out=values)
-        np.arcsinh(values, out=values)
-        np.true_divide(values, np.arcsinh(1.0 / self.a), out=values)
+        if self.x0 == 0:
+            np.true_divide(values, self.a, out=values)
+            np.arcsinh(values, out=values)
+            np.true_divide(values, np.arcsinh(1.0 / self.a), out=values)
+        else:
+            offset = np.arcsinh(self.x0 / self.a)
+            norm = np.arcsinh((1.0 - self.x0) / self.a) + offset
+            np.subtract(values, self.x0, out=values)
+            np.true_divide(values, self.a, out=values)
+            np.arcsinh(values, out=values)
+            np.add(values, offset, out=values)
+            np.true_divide(values, norm, out=values)
         return values
 
     @property
     def inverse(self):
         """A stretch object that performs the inverse operation."""
-        return SinhStretch(a=1.0 / np.arcsinh(1.0 / self.a))
+        if self.x0 == 0:
+            return SinhStretch(a=1.0 / np.arcsinh(1.0 / self.a))
+        return InvertedAsinhStretch(a=self.a, x0=self.x0)
+
+
+class InvertedAsinhStretch(BaseStretch):
+    r"""
+    Inverse transformation for `~astropy.visualization.AsinhStretch`.
+
+    The stretch is given by:
+
+    .. math::
+        y = x_0 + a \, {\rm sinh}(x D - {\rm asinh}(x_0 / a)),
+
+    where :math:`D = {\rm asinh}((1 - x_0) / a) + {\rm asinh}(x_0 / a)`.
+
+    Parameters
+    ----------
+    a : float, optional
+        The ``a`` parameter of the forward
+        `~astropy.visualization.AsinhStretch`. ``a`` must be greater
+        than 0. Default is 0.1.
+
+    x0 : float, optional
+        The ``x0`` parameter of the forward
+        `~astropy.visualization.AsinhStretch`. ``x0`` must be greater
+        than or equal to 0 and less than 1. Default is 0.
+    """
+
+    def __init__(self, a=0.1, x0=0.0):
+        super().__init__()
+        if a <= 0:
+            raise ValueError("a must be > 0")
+        if not 0 <= x0 < 1:
+            raise ValueError("x0 must be >= 0 and < 1")
+        self.a = a
+        self.x0 = x0
+
+    def __call__(self, values, clip=True, out=None):
+        values = _prepare(values, clip=clip, out=out)
+        offset = np.arcsinh(self.x0 / self.a)
+        norm = np.arcsinh((1.0 - self.x0) / self.a) + offset
+        np.multiply(values, norm, out=values)
+        np.subtract(values, offset, out=values)
+        np.sinh(values, out=values)
+        # Adding sinh(offset) instead of x0 / a makes the output exactly
+        # 0 for an input of 0.
+        np.add(values, np.sinh(offset), out=values)
+        np.multiply(values, self.a, out=values)
+        return values
+
+    @property
+    def inverse(self):
+        """A stretch object that performs the inverse operation."""
+        return AsinhStretch(a=self.a, x0=self.x0)
 
 
 class SinhStretch(BaseStretch):

@@ -259,6 +259,38 @@ class TestImageScaling:
         ref = np.arcsinh(DATA2SCL / asinh_a) / np.arcsinh(1.0 / asinh_a)
         assert_allclose(norm(DATA2), ref, atol=0, rtol=1.0e-5)
 
+    def test_asinh_with_asinh_x0(self):
+        """Test asinh scaling with a custom asinh_x0."""
+        asinh_a = 0.5
+        asinh_x0 = 0.2
+        norm = simple_norm(DATA2, stretch="asinh", asinh_a=asinh_a, asinh_x0=asinh_x0)
+        assert norm.stretch.x0 == asinh_x0
+        offset = np.arcsinh(asinh_x0 / asinh_a)
+        denom = np.arcsinh((1.0 - asinh_x0) / asinh_a) + offset
+        ref = (np.arcsinh((DATA2SCL - asinh_x0) / asinh_a) + offset) / denom
+        assert_allclose(norm(DATA2), ref, atol=0, rtol=1.0e-5)
+
+    def test_asinh_x0_sky_zero_point(self):
+        """
+        Test an asinh stretch with its zero point at the sky and the
+        black point below the sky.
+        """
+        vmin = -1.0421906109874948  # arcsinh(vmin / 2) = -0.5
+        vmax = 377.62182631705866
+        asinh_a = 2.0 / (vmax - vmin)
+        asinh_x0 = -vmin / (vmax - vmin)
+        data = np.linspace(vmin, vmax, 1001)
+        norm = simple_norm(
+            data,
+            stretch="asinh",
+            vmin=vmin,
+            vmax=vmax,
+            asinh_a=asinh_a,
+            asinh_x0=asinh_x0,
+        )
+        ref = (np.arcsinh(data / 2) + 0.5) / (np.arcsinh(vmax / 2) + 0.5)
+        assert_allclose(norm(data), ref, atol=1e-12, rtol=0)
+
     def test_sinh(self):
         """Test sinh scaling."""
         sinh_a = 0.5
@@ -295,6 +327,16 @@ def test_simplenorm(stretch):
     norm = snorm(data)
     assert isinstance(norm, ImageNormalize)
     assert_allclose(norm(data), simple_norm(data, stretch, percent=99)(data))
+
+
+@pytest.mark.skipif(not HAS_PLT, reason="requires matplotlib")
+def test_simplenorm_asinh_x0():
+    data = np.arange(25).reshape((5, 5))
+    kwargs = {"asinh_a": 0.3, "asinh_x0": 0.1}
+    snorm = SimpleNorm("asinh", **kwargs)
+    assert snorm.stretch.a == kwargs["asinh_a"]
+    assert snorm.stretch.x0 == kwargs["asinh_x0"]
+    assert_allclose(snorm(data)(data), simple_norm(data, "asinh", **kwargs)(data))
 
 
 @pytest.mark.skipif(not HAS_PLT, reason="requires matplotlib")
