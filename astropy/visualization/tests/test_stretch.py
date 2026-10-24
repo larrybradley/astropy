@@ -4,6 +4,11 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose, assert_equal
 
+from astropy.visualization.interval import (
+    ManualInterval,
+    MinMaxInterval,
+    PercentileInterval,
+)
 from astropy.visualization.stretch import (
     AsinhStretch,
     ContrastBiasStretch,
@@ -159,6 +164,64 @@ def test_histeqstretch_invalid():
     result = np.array([0.0, 0.0, 0.25, 0.5, 0.75, 1.0, 1.0])
     assert_equal(HistEqStretch(data)(data), result)
     assert_equal(InvertedHistEqStretch(data)(data), result)
+
+
+def test_histeqstretch_default_interval():
+    rng = np.random.default_rng(0)
+    data = rng.normal(0.0, 1.0, (50, 50))
+    x = np.linspace(0, 1, 101)
+
+    # Reference CDF from the data normalized by its min and max
+    ref_data = np.sort(data.ravel())
+    ref_data = (ref_data - ref_data[0]) / (ref_data[-1] - ref_data[0])
+    ref_values = np.linspace(0.0, 1.0, ref_data.size)
+    expected = np.interp(x, ref_data, ref_values)
+
+    assert_equal(HistEqStretch(data)(x), expected)
+    assert_equal(HistEqStretch(data, interval=MinMaxInterval())(x), expected)
+
+
+def test_histeqstretch_interval():
+    rng = np.random.default_rng(0)
+    data = np.concatenate([rng.normal(0.0, 1.0, 9990), np.full(10, 1000.0)])
+    interval = PercentileInterval(99)
+    stretch = HistEqStretch(data, interval=interval)
+    assert_equal(stretch([0.0, 1.0]), [0.0, 1.0])
+
+    # The pixels within the interval are equalized to a uniform
+    # distribution
+    vmin, vmax = interval.get_limits(data)
+    values = data[(data >= vmin) & (data <= vmax)]
+    result = stretch((values - vmin) / (vmax - vmin))
+    quantiles = [0.1, 0.25, 0.5, 0.75, 0.9]
+    assert_allclose(np.quantile(result, quantiles), quantiles, atol=0.01)
+
+
+@pytest.mark.parametrize("interval", [None, PercentileInterval(95)])
+def test_histeqstretch_inverse(interval):
+    rng = np.random.default_rng(0)
+    data = rng.normal(0.0, 1.0, 1000)
+    stretch = HistEqStretch(data, interval=interval)
+    x = np.linspace(0, 1, 101)
+    assert_allclose(stretch.inverse(stretch(x)), x, atol=0.01)
+    assert_equal(stretch.inverse.inverse(x), stretch(x))
+
+
+@pytest.mark.parametrize(
+    ("data", "interval"),
+    [
+        (np.full(10, 3.0), None),
+        (np.array([3.0, 3.0, np.nan, np.inf]), None),
+        (np.full(10, np.nan), None),
+        (np.linspace(0, 1, 10), ManualInterval(10, 20)),
+        (np.array([0.0, 1.0, 15.0]), ManualInterval(10, 20)),
+    ],
+)
+def test_histeqstretch_constant_data(data, interval):
+    x = np.linspace(0, 1, 11)
+    stretch = HistEqStretch(data, interval=interval)
+    assert_equal(stretch(x), x)
+    assert_equal(stretch.inverse(x), x)
 
 
 @pytest.mark.parametrize("a", [0.5, 1.5, 2.5])

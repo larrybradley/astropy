@@ -1,3 +1,4 @@
-Fixed ``PowerStretch`` so that the ``invalid`` value replaces the NaN
-values generated for negative inputs with any non-integer power, not
-only powers between 0 and 1.
+Fixed ``HistEqStretch`` returning NaN for constant data. It now returns
+the input values unchanged. Also fixed ``PowerStretch`` so that the
+``invalid`` value replaces the NaN values generated for negative inputs
+with any non-integer power, not only powers between 0 and 1.

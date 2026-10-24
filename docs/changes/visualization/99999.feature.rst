@@ -1,0 +1,6 @@
+Added an ``interval`` keyword to ``HistEqStretch`` that sets the interval
+used to normalize its data. Previously the data were always normalized
+by their minimum and maximum, so the equalization was wrong when the
+image was normalized with a different interval, such as a percentile
+interval. Only the data within the interval now define the
+equalization.

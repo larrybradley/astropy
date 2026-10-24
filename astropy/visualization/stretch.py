@@ -7,6 +7,7 @@ another set of [0:1] values with a transformation.
 
 import numpy as np
 
+from .interval import ManualInterval, MinMaxInterval
 from .transform import BaseTransform, CompositeTransform
 
 __all__ = [
@@ -796,18 +797,45 @@ class HistEqStretch(BaseStretch):
     ----------
     data : array-like
         The data defining the equalization.
+
     values : array-like, optional
         The input image values, which should already be normalized to
         the [0:1] range.
+
+    interval : `~astropy.visualization.BaseInterval` or `None`, optional
+        The interval used to normalize ``data`` to the [0:1] range.
+        Only the data within the interval define the equalization. Use
+        the same interval that normalizes the values passed to this
+        stretch, for example the ``interval`` of an
+        `~astropy.visualization.mpl_normalize.ImageNormalize`. If
+        `None`, then `~astropy.visualization.MinMaxInterval` is used.
+
+    Notes
+    -----
+    If the finite data within the interval have fewer than two distinct
+    values, the equalization is undefined and the stretch is the
+    identity mapping.
     """
 
-    def __init__(self, data, values=None):
+    def __init__(self, data, values=None, *, interval=None):
+        if interval is None:
+            interval = MinMaxInterval()
+
         # Assume data is not necessarily normalized at this point
-        self.data = np.sort(data.ravel())
-        self.data = self.data[np.isfinite(self.data)]
-        vmin = self.data.min()
-        vmax = self.data.max()
-        self.data = (self.data - vmin) / (vmax - vmin)
+        data = np.sort(data.ravel())
+        data = data[np.isfinite(data)]
+        if data.size > 0:
+            vmin, vmax = interval.get_limits(data)
+            if vmax > vmin:
+                data = (data - vmin) / (vmax - vmin)
+                data = data[(data >= 0) & (data <= 1)]
+            else:
+                data = data[:0]
+
+        if data.size == 0 or data[0] == data[-1]:
+            data = np.array([0.0, 1.0])
+            values = None
+        self.data = data
 
         # Compute relative position of each pixel
         if values is None:
@@ -854,7 +882,10 @@ class InvertedHistEqStretch(BaseStretch):
     @property
     def inverse(self):
         """A stretch object that performs the inverse operation."""
-        return HistEqStretch(self.data, values=self.values)
+        # The data are already normalized to the [0:1] range
+        return HistEqStretch(
+            self.data, values=self.values, interval=ManualInterval(0.0, 1.0)
+        )
 
 
 class ContrastBiasStretch(BaseStretch):
