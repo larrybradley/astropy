@@ -11,3 +11,8 @@ The ``biweight_location``, ``biweight_scale``, ``biweight_midvariance``,
 ``biweight_midcovariance``, and ``biweight_midcorrelation`` functions
 now raise a ``ValueError`` if the tuning constant ``c`` is not
 positive.
+
+Fixed ``biweight_location``, ``biweight_scale``, and
+``biweight_midvariance`` raising a ``ValueError`` for a
+``numpy.ma.MaskedArray`` input with an unmasked NaN value when
+``axis=None``. NaN is now returned.
